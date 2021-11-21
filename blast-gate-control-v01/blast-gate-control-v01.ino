@@ -1,10 +1,12 @@
-
-
 // Based on the code: https://scottydwalsh.wordpress.com/automatic-dust-collection/
 // Also: https://github.com/iliketomakestuff/iltms_automated_dust_collection/blob/master/DustCollectionAutomation_v2.ino
 
 void writeToLog(String eventMessage) {
   Serial.println(eventMessage);
+}
+
+void setupDelay() {
+  delay(250);
 }
 
 class dustCollector {
@@ -14,6 +16,8 @@ class dustCollector {
     int startPin;
     int stopPin;
     bool state = false;
+    int spinDownSeconds = 0;
+
 
   public:
     dustCollector(int startPin, int stopPin) {
@@ -24,10 +28,10 @@ class dustCollector {
     void setup() {
       pinMode(startPin, OUTPUT);
       pinMode(stopPin, OUTPUT);
-      digitalWrite(startPin, HIGH);
-      digitalWrite(stopPin, HIGH);
+      digitalWrite(startPin, 1);
+      digitalWrite(stopPin, 1);
       writeToLog("Dust collector initialized.");
-      delay(500);
+      setupDelay();
     }
 
     bool isOn() {
@@ -35,23 +39,33 @@ class dustCollector {
     }
 
     void turnOn() {
-      if (not isOn()) {
+      if (not this->isOn()) {
         writeToLog("Dust Collector Turned On");
-        digitalWrite(startPin, LOW);
+        digitalWrite(startPin, 0);
         state = true;
         delay(2000);
-        digitalWrite(startPin, HIGH);
+        digitalWrite(startPin, 1);
       }
     }
 
-    void turnOff() {
-      if (isOn()) {
+    void turnOff(int spinDownSeconds) {
+      this->spinDownSeconds = spinDownSeconds;
+      if (not isSpinningDown()) {
         writeToLog("Dust Collector Turned Off");
         digitalWrite(stopPin, LOW);
         state = false;
         delay(2000);
         digitalWrite(stopPin, HIGH);
       }
+    }
+
+    bool isSpinningDown() {
+      spinDownSeconds > 0 && isOn();
+    }
+
+    void decrmentSpinDown() {
+      delay(1000);
+      spinDownSeconds -= 1;
     }
 };
 
@@ -71,7 +85,7 @@ class blastGate {
       pinMode(pin, OUTPUT);
       digitalWrite(pin, HIGH);
       writeToLog(gateName + " Blast gate initialized on pin " + pin);
-      delay(500);
+      setupDelay();
 
     }
 
@@ -98,6 +112,52 @@ class blastGate {
     }
 };
 
+class machine {
+    String machineName;
+    int sensorPin;
+    int spinDownSeconds;
+    bool priorState = false;
+    bool state = false;
+    blastGate &primaryBlastGate;
+    dustCollector &primaryDustCollector;
+
+  public:
+
+    machine(String machineName, int sensorPin, int spinDownSeconds, blastGate &primaryBlastGate, dustCollector &primaryDustCollector) {
+      this->machineName = machineName;
+      this->sensorPin = sensorPin;
+      this->spinDownSeconds = spinDownSeconds;
+    }
+
+    void setup() {
+      pinMode(sensorPin, INPUT);
+      writeToLog(machineName + " initialized, sensor on pin " + sensorPin);
+      setupDelay();
+    }
+
+    void checkUsage() {
+      if (isOn()) {
+        state = true;
+        if (state != priorState) {
+          writeToLog(machineName + " is on.");
+          primaryBlastGate.openGate();
+          primaryDustCollector.turnOn();
+          priorState = state;
+        }
+      }
+
+      if (isOff()){
+        state = false;
+        if (state != priorState){
+          writeToLog(machineName + " is off.");
+          primaryBlastGate.closeGate();
+          primaryDustCollector.turnOff(spinDownSeconds);
+          priorState = state;
+        }
+      }
+    }
+};
+
 dustCollector mainDustCollector(7, 6);
 
 blastGate planerGate("Planer", 13);
@@ -107,9 +167,16 @@ blastGate tableSawGate("Table Saw", 10);
 blastGate shaperGate("Shaper", 9);
 blastGate floorSweepGate("Floor Sweep", 8);
 
+machine planer("Planer", A0, 10, planerGate, mainDustCollector);
+machine bandSaw("Band Saw", A1, 5 , bandSawGateGate, mainDustCollector);
+machine jointer("Jointer", A2, 10 , jointerGate, mainDustCollector);
+machine tableSaw("Table Saw", A3, 5 , tableSawGate, mainDustCollector);
+machine shaper("Shaper", A4, 5 , shaperGate, mainDustCollector);
+
 void setup() {
   delay(1000);
   Serial.begin(9600);
+
 
   mainDustCollector.setup();
 
@@ -120,9 +187,35 @@ void setup() {
   shaperGate.setup();
   floorSweepGate.setup();
 
+  planer.setup();
+  bandSaw.setup();
+  jointer.setup();
+  tableSaw.setup();
+  shaper.setup();
+  floorSweep.setup();
+
 }
 
 void loop() {
+  if (mainDustCollector.isSpinningDown()) {
+    mainDustCollector.decrmentSpinDown();
+  }
+
+  planer.checkUsage();
+  bandSaw.checkUsage();
+  jointer.checkUsage();
+  tableSaw.checkUsage();
+  shaper.checkUsage();
+  floorSweep.checkUsage();
+
+
+
+  mainDustCollector.turnOn();
+  delay(3000);
+  mainDustCollector.turnOff();
+  delay(3000);
+
+
   // put your main code here, to run repeatedly:
 
   // for each tool
@@ -130,5 +223,6 @@ void loop() {
   // update gate states accoridingly
   // if ia tool is on turn on the dust collector
   // if no tool is on turn off the dust collector
+
 
 }
