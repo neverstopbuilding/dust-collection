@@ -1,5 +1,9 @@
 // Based on the code: https://scottydwalsh.wordpress.com/automatic-dust-collection/
 // Also: https://github.com/iliketomakestuff/iltms_automated_dust_collection/blob/master/DustCollectionAutomation_v2.ino
+// based on work done at: https://olimex.wordpress.com/2015/09/29/energy-monitoring-with-arduino-and-current-clamp-sensor/
+// and: https://learn.openenergymonitor.org/electricity-monitoring/ct-sensors/interface-with-arduino?redirected=true
+
+#include "EmonLib.h"
 
 void writeToLog(String eventMessage) {
   Serial.println(eventMessage);
@@ -43,7 +47,7 @@ class dustCollector {
         writeToLog("Dust Collector Turned On");
         digitalWrite(startPin, 0);
         state = true;
-        delay(2000);
+        delay(1000);
         digitalWrite(startPin, 1);
       }
     }
@@ -54,7 +58,7 @@ class dustCollector {
         writeToLog("Dust Collector Turned Off");
         digitalWrite(stopPin, LOW);
         state = false;
-        delay(2000);
+        delay(1000);
         digitalWrite(stopPin, HIGH);
       }
     }
@@ -94,12 +98,12 @@ class blastGate {
     }
 
     void openGate() {
-      if (not isOpen()) {
-        writeToLog(gateName + " Blast Gate Opened");
-        digitalWrite(pin, LOW);
-        state = true;
-        delay(1000);
-      }
+      //      if (not isOpen()) {
+      writeToLog(gateName + " Blast Gate Opened");
+      digitalWrite(pin, LOW);
+      state = true;
+      delay(1000);
+      //      }
     }
 
     void closeGate() {
@@ -113,6 +117,9 @@ class blastGate {
 };
 
 class machine {
+    EnergyMonitor emon;
+    int counter = 0;
+    double Irms = 0;
     String machineName;
     int sensorPin;
     int spinDownSeconds;
@@ -123,21 +130,36 @@ class machine {
 
   public:
 
-    machine(String machineName, int sensorPin, int spinDownSeconds, blastGate &primaryBlastGate, dustCollector &primaryDustCollector) {
+    machine(String machineName, int sensorPin, int spinDownSeconds, blastGate &attachBlastGate, dustCollector &attachDustCollector):
+      primaryBlastGate(attachBlastGate),
+      primaryDustCollector(attachDustCollector)
+    {
       this->machineName = machineName;
       this->sensorPin = sensorPin;
       this->spinDownSeconds = spinDownSeconds;
     }
 
     void setup() {
-      pinMode(sensorPin, INPUT);
+
+      emon.current(0, 111.1);
       writeToLog(machineName + " initialized, sensor on pin " + sensorPin);
       setupDelay();
     }
 
     void checkUsage() {
-      if (isOn()) {
+      Irms = emon.calcIrms(2960);
+      Serial.print(Irms);
+      Serial.print(counter);
+      Serial.print(" ");
+      if (Irms > 0.2) {
+        counter ++;
+      } else {
+        counter --;
+      }
+      if (counter > 5) {
+        Serial.println("On for 5 cycles");
         state = true;
+        counter = 5;
         if (state != priorState) {
           writeToLog(machineName + " is on.");
           primaryBlastGate.openGate();
@@ -146,16 +168,20 @@ class machine {
         }
       }
 
-      if (isOff()){
+      if (counter < 0) {
+        Serial.println("OFF for 5 cycles");
         state = false;
-        if (state != priorState){
+        counter = 0;
+        if (state != priorState) {
           writeToLog(machineName + " is off.");
           primaryBlastGate.closeGate();
           primaryDustCollector.turnOff(spinDownSeconds);
           priorState = state;
         }
       }
+      priorState = state;
     }
+
 };
 
 dustCollector mainDustCollector(7, 6);
@@ -167,11 +193,12 @@ blastGate tableSawGate("Table Saw", 10);
 blastGate shaperGate("Shaper", 9);
 blastGate floorSweepGate("Floor Sweep", 8);
 
-machine planer("Planer", A0, 10, planerGate, mainDustCollector);
-machine bandSaw("Band Saw", A1, 5 , bandSawGateGate, mainDustCollector);
-machine jointer("Jointer", A2, 10 , jointerGate, mainDustCollector);
-machine tableSaw("Table Saw", A3, 5 , tableSawGate, mainDustCollector);
-machine shaper("Shaper", A4, 5 , shaperGate, mainDustCollector);
+machine planer("Planer", 0, 10, planerGate, mainDustCollector);
+machine bandSaw("Band Saw", 1, 5, bandSawGate, mainDustCollector);
+machine jointer("Jointer", 2, 10, jointerGate, mainDustCollector);
+machine tableSaw("Table Saw", 3, 5, tableSawGate, mainDustCollector);
+machine shaper("Shaper", 4, 5, shaperGate, mainDustCollector);
+machine floorSweep("Floor Sweep", 5, 5, floorSweepGate, mainDustCollector);
 
 void setup() {
   delay(1000);
@@ -202,18 +229,18 @@ void loop() {
   }
 
   planer.checkUsage();
-  bandSaw.checkUsage();
-  jointer.checkUsage();
-  tableSaw.checkUsage();
-  shaper.checkUsage();
-  floorSweep.checkUsage();
+  //  bandSaw.checkUsage();
+  //  jointer.checkUsage();
+  //  tableSaw.checkUsage();
+  //  shaper.checkUsage();
+  //  floorSweep.checkUsage();
 
 
 
-  mainDustCollector.turnOn();
-  delay(3000);
-  mainDustCollector.turnOff();
-  delay(3000);
+  //  mainDustCollector.turnOn();
+  //  delay(3000);
+  //  mainDustCollector.turnOff(0);
+  //  delay(3000);
 
 
   // put your main code here, to run repeatedly:
