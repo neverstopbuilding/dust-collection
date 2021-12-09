@@ -21,41 +21,35 @@
 
 #include "EmonLib.h"                   // Include Emon Library
 EnergyMonitor emon1;                   // Create an instance
+int sensorValue;
 double Irms = 0;
-int counter = 0;
-bool state = false;
-bool priorState = false;
+double voltage = 0;
+double lastValue = 0;
 
 void setup()
 {
   Serial.begin(9600);
-
-  emon1.current(0, 111.1);             // Current: input pin, calibration.
+  emon1.current(0, 50);             // Current: input pin, calibration.
 }
 
 void loop()
+
+
 {
-  Irms = emon1.calcIrms(2960);
-  priorState = state;
-  Serial.print(counter);
+  sensorValue  = analogRead(A0);  // read the input pin
+float voltage= sensorValue * (5.0 / 1023.0);
+  double Irms = emon1.calcIrms(1480);  // Calculate Irms only
+  double delta = Irms - lastValue;
+  lastValue = Irms;
+  Serial.print(voltage);
+
   Serial.print(" ");
-  if (Irms > 0.2) {
+  Serial.print(Irms);
+  Serial.print(" ");
+  Serial.print(delta);
+  Serial.println("");
 
-    counter ++;
-  } else {
-    state = false;
-    counter --;
-  }
-  if (counter > 5) {
-    Serial.println("On for 5 cycles");
-    state = true;
-    counter = 5;
-  }
 
-  if (counter < 0) {
-    Serial.println("OFF for 5 cycles");
-    state = false;
-    counter = 0;
-  }
+
 
 }

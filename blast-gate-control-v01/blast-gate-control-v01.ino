@@ -22,6 +22,17 @@ class dustCollector {
     bool state = false;
     int spinDownSeconds = 0;
 
+    void hardwareTurnOn() {
+      digitalWrite(startPin, 0);
+      delay(1000);
+      digitalWrite(startPin, 1);
+    }
+
+    void hardwareTurnOff() {
+      digitalWrite(stopPin, LOW);
+      delay(1000);
+      digitalWrite(stopPin, HIGH);
+    }
 
   public:
     dustCollector(int startPin, int stopPin) {
@@ -42,34 +53,40 @@ class dustCollector {
       return state;
     }
 
+    bool isOff() {
+      return not state;
+    }
+
     void turnOn() {
-      if (not this->isOn()) {
+      spinDownSeconds = 0;
+      if (not isOn()) {
         writeToLog("Dust Collector Turned On");
-        digitalWrite(startPin, 0);
         state = true;
-        delay(1000);
-        digitalWrite(startPin, 1);
+
+//        hardwareTurnOn();
+
       }
     }
+    bool isSpinningDown() {
+      return spinDownSeconds > 0;
+    }
+
 
     void turnOff(int spinDownSeconds) {
       this->spinDownSeconds = spinDownSeconds;
-      if (not isSpinningDown()) {
-        writeToLog("Dust Collector Turned Off");
-        digitalWrite(stopPin, LOW);
-        state = false;
-        delay(1000);
-        digitalWrite(stopPin, HIGH);
-      }
+      writeToLog("Spindown Started");
     }
 
-    bool isSpinningDown() {
-      spinDownSeconds > 0 && isOn();
-    }
 
     void decrmentSpinDown() {
-      delay(1000);
+      Serial.print(spinDownSeconds);
       spinDownSeconds -= 1;
+      if (spinDownSeconds == 0) {
+        writeToLog("Dust Collector Turned Off");
+        state = false;
+//        hardwareTurnOff();
+      }
+      delay(1000);
     }
 };
 
@@ -77,6 +94,16 @@ class blastGate {
     String gateName;
     int pin;
     bool state = false;
+
+    void hardwareOpenGate() {
+      digitalWrite(pin, LOW);
+      delay(250);
+    }
+
+    void hardwareCloseGate() {
+      digitalWrite(pin, HIGH);
+      delay(250);
+    }
 
   public:
 
@@ -98,35 +125,37 @@ class blastGate {
     }
 
     void openGate() {
-      //      if (not isOpen()) {
-      writeToLog(gateName + " Blast Gate Opened");
-      digitalWrite(pin, LOW);
-      state = true;
-      delay(1000);
-      //      }
+      if (not isOpen()) {
+        writeToLog(gateName + " Blast Gate Opened");
+        state = true;
+//        hardwareOpenGate();
+      }
     }
 
     void closeGate() {
       if (isOpen()) {
         writeToLog(gateName + " Blast Gate Closed");
-        digitalWrite(pin, HIGH);
+//        hardwareCloseGate();
         state = false;
-        delay(1000);
       }
     }
 };
 
 class machine {
-    EnergyMonitor emon;
-    int counter = 0;
+    EnergyMonitor currentSensor;
+    blastGate &primaryBlastGate;
+    dustCollector &primaryDustCollector;
+
+
+
+    double lastIrms = 0;
     double Irms = 0;
+    double delta = 0;
     String machineName;
     int sensorPin;
     int spinDownSeconds;
     bool priorState = false;
     bool state = false;
-    blastGate &primaryBlastGate;
-    dustCollector &primaryDustCollector;
 
   public:
 
@@ -140,26 +169,29 @@ class machine {
     }
 
     void setup() {
-
-      emon.current(0, 111.1);
+      currentSensor.current(0, 120);
       writeToLog(machineName + " initialized, sensor on pin " + sensorPin);
       setupDelay();
     }
 
     void checkUsage() {
-      Irms = emon.calcIrms(2960);
-      Serial.print(Irms);
-      Serial.print(counter);
-      Serial.print(" ");
-      if (Irms > 0.2) {
-        counter ++;
-      } else {
-        counter --;
+      double Irms = currentSensor.calcIrms(1480);
+      if (primaryDustCollector.isOff()) {
+        primaryBlastGate.closeGate();
       }
-      if (counter > 5) {
-        Serial.println("On for 5 cycles");
+
+            Serial.print(" ");
+            Serial.print(Irms);
+            Serial.print(" ");
+            Serial.print(delta);
+            Serial.print(machineName + " = ");
+            Serial.print(state);
+            Serial.println("");
+
+
+      if (delta >= .1 && Irms > 0.32) {
+        //        Serial.println("On state detected");
         state = true;
-        counter = 5;
         if (state != priorState) {
           writeToLog(machineName + " is on.");
           primaryBlastGate.openGate();
@@ -168,37 +200,40 @@ class machine {
         }
       }
 
-      if (counter < 0) {
-        Serial.println("OFF for 5 cycles");
+      if (delta <= -.1) {
+        //        Serial.println("off state detected");
         state = false;
-        counter = 0;
         if (state != priorState) {
           writeToLog(machineName + " is off.");
-          primaryBlastGate.closeGate();
+          //          primaryBlastGate.closeGate();
           primaryDustCollector.turnOff(spinDownSeconds);
           priorState = state;
         }
       }
       priorState = state;
+      delta = Irms - lastIrms;
+      lastIrms = Irms;
+
     }
+
 
 };
 
 dustCollector mainDustCollector(7, 6);
 
-blastGate planerGate("Planer", 13);
-blastGate bandSawGate("Band Saw", 12);
-blastGate jointerGate("Jointer", 11);
-blastGate tableSawGate("Table Saw", 10);
-blastGate shaperGate("Shaper", 9);
-blastGate floorSweepGate("Floor Sweep", 8);
+blastGate planerGate("Planer", 5);
+//blastGate bandSawGate("Band Saw", 12);
+//blastGate jointerGate("Jointer", 11);
+//blastGate tableSawGate("Table Saw", 10);
+//blastGate shaperGate("Shaper", 9);
+//blastGate floorSweepGate("Floor Sweep", 8);
 
-machine planer("Planer", 0, 10, planerGate, mainDustCollector);
-machine bandSaw("Band Saw", 1, 5, bandSawGate, mainDustCollector);
-machine jointer("Jointer", 2, 10, jointerGate, mainDustCollector);
-machine tableSaw("Table Saw", 3, 5, tableSawGate, mainDustCollector);
-machine shaper("Shaper", 4, 5, shaperGate, mainDustCollector);
-machine floorSweep("Floor Sweep", 5, 5, floorSweepGate, mainDustCollector);
+machine planer("Planer", 0, 2, planerGate, mainDustCollector);
+//machine bandSaw("Band Saw", 1, 5, bandSawGate, mainDustCollector);
+//machine jointer("Jointer", 2, 10, jointerGate, mainDustCollector);
+//machine tableSaw("Table Saw", 3, 5, tableSawGate, mainDustCollector);
+//machine shaper("Shaper", 4, 5, shaperGate, mainDustCollector);
+//machine floorSweep("Floor Sweep", 5, 5, floorSweepGate, mainDustCollector);
 
 void setup() {
   delay(1000);
@@ -208,28 +243,29 @@ void setup() {
   mainDustCollector.setup();
 
   planerGate.setup();
-  bandSawGate.setup();
-  jointerGate.setup();
-  tableSawGate.setup();
-  shaperGate.setup();
-  floorSweepGate.setup();
+//    bandSawGate.setup();
+  //  jointerGate.setup();
+  //  tableSawGate.setup();
+  //  shaperGate.setup();
+  //  floorSweepGate.setup();
 
   planer.setup();
-  bandSaw.setup();
-  jointer.setup();
-  tableSaw.setup();
-  shaper.setup();
-  floorSweep.setup();
+//    bandSaw.setup();
+  //  jointer.setup();
+  //  tableSaw.setup();
+  //  shaper.setup();
+  //  floorSweep.setup();
 
 }
 
 void loop() {
+  //  Serial.print(mainDustCollector.isSpinningDown());
   if (mainDustCollector.isSpinningDown()) {
     mainDustCollector.decrmentSpinDown();
   }
 
   planer.checkUsage();
-  //  bandSaw.checkUsage();
+//    bandSaw.checkUsage();
   //  jointer.checkUsage();
   //  tableSaw.checkUsage();
   //  shaper.checkUsage();
