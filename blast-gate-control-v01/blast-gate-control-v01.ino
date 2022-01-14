@@ -143,8 +143,10 @@ class blastGate {
 
 class machine {
     EnergyMonitor currentSensor;
-    blastGate &primaryBlastGate;
+    //blastGate &primaryBlastGate;
+    blastGate *gates;
     dustCollector &primaryDustCollector;
+    blastGate &secondBlastGate;
 
 
 
@@ -156,11 +158,13 @@ class machine {
     int spinDownSeconds;
     bool priorState = false;
     bool state = false;
+    bool hasSecondGate = false;
+    int noOfGates = 0;
 
   public:
 
-    machine(String machineName, int sensorPin, int spinDownSeconds, blastGate &attachBlastGate, dustCollector &attachDustCollector):
-      primaryBlastGate(attachBlastGate),
+    machine(String machineName, int sensorPin, int spinDownSeconds, blastGate gates[], dustCollector &attachDustCollector, int noOfGates):
+//      primaryBlastGate(attachBlastGate),
       primaryDustCollector(attachDustCollector)
     {
       this->machineName = machineName;
@@ -177,16 +181,22 @@ class machine {
     void checkUsage() {
       double Irms = currentSensor.calcIrms(1480);
       if (primaryDustCollector.isOff()) {
-        primaryBlastGate.closeGate();
+
+        for(int i=0; i<noOfGates;i++){
+        gates[i].closeGate();  
+        }
+        
+//        primaryBlastGate.closeGate();
+
       }
 
-            Serial.print(" ");
-            Serial.print(Irms);
-            Serial.print(" ");
-            Serial.print(delta);
-            Serial.print(machineName + " = ");
-            Serial.print(state);
-            Serial.println("");
+//            Serial.print(" ");
+//            Serial.print(Irms);
+//            Serial.print(" ");
+//            Serial.print(delta);
+//            Serial.print(machineName + " = ");
+//            Serial.print(state);
+//            Serial.println("");
 
 
       if (delta >= .1 && Irms > 0.32) {
@@ -194,7 +204,16 @@ class machine {
         state = true;
         if (state != priorState) {
           writeToLog(machineName + " is on.");
-          primaryBlastGate.openGate();
+
+//          gates[1].openGate();
+          for(int i=0; i<noOfGates;i++){
+            Serial.print(i);
+        gates[i].openGate();  
+        }
+//          primaryBlastGate.openGate();
+//          if(hasSecondGate){
+//            secondBlastGate.openGate();
+//          }
           primaryDustCollector.turnOn();
           priorState = state;
         }
@@ -205,7 +224,7 @@ class machine {
         state = false;
         if (state != priorState) {
           writeToLog(machineName + " is off.");
-          //          primaryBlastGate.closeGate();
+
           primaryDustCollector.turnOff(spinDownSeconds);
           priorState = state;
         }
@@ -226,13 +245,17 @@ blastGate planerGate("Planer", 5);
 //blastGate jointerGate("Jointer", 11);
 //blastGate tableSawGate("Table Saw", 10);
 //blastGate shaperGate("Shaper", 9);
-//blastGate floorSweepGate("Floor Sweep", 8);
+blastGate floorSweepGate("Floor Sweep", 8);
 
-machine planer("Planer", 0, 2, planerGate, mainDustCollector);
+blastGate theseGates[] = {planerGate,floorSweepGate};
+machine planer("Planer", 0, 2, theseGates, mainDustCollector,2); 
+
 //machine bandSaw("Band Saw", 1, 5, bandSawGate, mainDustCollector);
 //machine jointer("Jointer", 2, 10, jointerGate, mainDustCollector);
 //machine tableSaw("Table Saw", 3, 5, tableSawGate, mainDustCollector);
+
 //machine shaper("Shaper", 4, 5, shaperGate, mainDustCollector);
+
 //machine floorSweep("Floor Sweep", 5, 5, floorSweepGate, mainDustCollector);
 
 void setup() {
@@ -247,7 +270,9 @@ void setup() {
   //  jointerGate.setup();
   //  tableSawGate.setup();
   //  shaperGate.setup();
-  //  floorSweepGate.setup();
+ floorSweepGate.setup();
+
+
 
   planer.setup();
 //    bandSaw.setup();
