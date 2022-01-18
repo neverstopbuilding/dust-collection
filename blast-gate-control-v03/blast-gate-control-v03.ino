@@ -6,7 +6,7 @@
 
 
 int mVperAmp = 20.14; // use 100 for 20A Module and 66 for 30A Module
-double ampThreshold = 2.5;
+
 
 double Voltage = 0;
 double VRMS = 0;
@@ -16,16 +16,15 @@ double AmpsRMS = 0;
 const int DEBUG_NUMBER_OF_TOOLS = 2;
 const int NUMBER_OF_TOOLS = 6;
 String tools[NUMBER_OF_TOOLS] = {"Planer", "Bandsaw", "Jointer", "Table Saw", "Shaper", "Floor Sweep"};
+double toolCurrentThreshold[NUMBER_OF_TOOLS] = {15,3,2.5,8,8,0};
 int sensorPin[NUMBER_OF_TOOLS] = {A0, A1, A2, A3, A4, 2};
 int toolState[NUMBER_OF_TOOLS] = {0, 0, 0, 0, 0, 0};
 int lastToolState[NUMBER_OF_TOOLS] = {0, 0, 0, 0, 0, 0};
 int toolTriggerType[NUMBER_OF_TOOLS] = {CURRENT_TRIGGER, CURRENT_TRIGGER, CURRENT_TRIGGER, CURRENT_TRIGGER, CURRENT_TRIGGER, SWITCH_TRIGGER};
-
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 int buttonState;
 int lastButtonState = HIGH;  // the previous reading from the input pin
-
 const int NUMBER_OF_GATES = 6;
 String gateNames[NUMBER_OF_GATES] = {"Sweep Leg", "Shaper", "Planer", "Table Saw", "Bandsaw", "Jointer"};
 int gates[NUMBER_OF_TOOLS][NUMBER_OF_GATES] = {
@@ -48,7 +47,7 @@ bool spinDownState = false;
 unsigned long shutDownTime = 0;
 bool startUpState = false;
 unsigned long startUpTime = 0;
-const int SPIN_DOWN_TIME = 4000;
+const int SPIN_DOWN_TIME = 6000;
 const int DUST_COLLECTOR_START_DELAY = 2000;
 
 int thisReading = 0;
@@ -186,14 +185,12 @@ boolean checkForAmperageChange(int which) {
   Voltage = getVPP(sensorPin[which]);
   VRMS = (Voltage / 2.0) * 0.707;
   AmpsRMS = (VRMS * 1000) / mVperAmp;
-  Serial.print(tools[which] + ": ");
-  Serial.print(AmpsRMS);
-  Serial.print(" Amps RMS - State: ");
-  if (AmpsRMS > ampThreshold) {
-    Serial.println("ON");
+//  Serial.print(tools[which] + ": ");
+//  Serial.print(AmpsRMS);
+//  Serial.print(" Amps RMS - State: ");
+  if (AmpsRMS > toolCurrentThreshold[which]) {
     return 1;
   } else {
-    Serial.println("OFF");
     return 0;
   }
 }
@@ -216,7 +213,7 @@ float getVPP(int sensor)
   int minValue = 1024;          // store min value here
 
   uint32_t start_time = millis();
-  while ((millis() - start_time) < 250) //sample for 1 Sec
+  while ((millis() - start_time) < 500) //sample for 1 Sec
   {
     readValue = analogRead(sensor);
     // see if you have a new maxValue
